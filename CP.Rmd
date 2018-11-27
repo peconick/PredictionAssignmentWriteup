@@ -1,0 +1,200 @@
+---
+title: "PML - Courser Project"
+author: "Gustavo T Peconick"
+date: "21/11/2018"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE, cache=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+require(caret)
+require(dplyr)
+require(knitr)
+set.seed(123)
+
+```
+
+
+## Summary
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+```{r read, echo=FALSE, cache=TRUE}
+## Set files URL
+trainDataURL<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testDataURL<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+## Load DAta
+train<-read.csv(trainDataURL)
+test<-read.csv(testDataURL)
+
+## Handle Variavles
+
+## Convert To Time stamp
+test$cvtd_timestamp<-as.Date(test$cvtd_timestamp)
+train$cvtd_timestamp<-as.Date(train$cvtd_timestamp)
+
+## Convert to Numeric
+numericVariables<-
+    c("kurtosis_roll_belt","kurtosis_picth_belt","skewness_roll_belt","skewness_roll_belt.1","max_yaw_belt","min_yaw_belt","kurtosis_roll_arm","kurtosis_picth_arm","kurtosis_yaw_arm","skewness_roll_arm","skewness_pitch_arm","skewness_yaw_arm","kurtosis_roll_dumbbell","kurtosis_picth_dumbbell","skewness_roll_dumbbell","skewness_pitch_dumbbell","max_yaw_dumbbell","min_yaw_dumbbell","kurtosis_roll_forearm","kurtosis_picth_forearm","skewness_roll_forearm","skewness_pitch_forearm","max_yaw_forearm","min_yaw_forearm")
+
+test[,numericVariables] <- sapply(test[,numericVariables],as.numeric)
+train[,numericVariables] <- sapply(train[,numericVariables],as.numeric)
+rm(numericVariables)
+```
+
+## Missing Values
+We can notice a lot of missing on a few variables of the **testing set** thus, we will remove those variables, form **traning** and **testing sets** so we can build our model.
+
+```{r remove train missing variables, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+naCounts<- train %>% sapply(is.na) %>% colSums()
+nRows<-nrow(train)
+naPercentage<-naCounts/nRows*100
+NAs<-data.frame(VarName=names(naCounts),NACount=naCounts,NAPercentage=naPercentage)
+NAs<-NAs[NAs$NAPercentage>0,]
+rownames(NAs)<-NULL
+rm(naCounts,naPercentage)
+kable(NAs)
+
+deleteVariabes<-as.character(NAs$VarName)
+
+train[,deleteVariabes]<-NULL
+test[,deleteVariabes]<-NULL
+rm(nRows,NAs,deleteVariabes)
+```
+
+After Removing those variables we check for *NAs* on the **testing set**. A few more variables are completly missing, so, we will also remove those from both **training** and **testing sets**
+
+```{r test missing variables, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+naCounts<- test %>% sapply(is.na) %>% colSums()
+nRows<-nrow(test)
+naPercentage<-naCounts/nRows*100
+NAs<-data.frame(VarName=names(naCounts),NACount=naCounts,NAPercentage=naPercentage)
+NAs<-NAs[NAs$NAPercentage>0,]
+rownames(NAs)<-NULL
+rm(naCounts,naPercentage)
+kable(NAs)
+
+deleteVariabes<-as.character(NAs$VarName)
+
+train[,deleteVariabes]<-NULL
+test[,deleteVariabes]<-NULL
+rm(nRows,NAs,deleteVariabes)
+```
+
+## Useless data
+Some of the variables on the data set don't contribute to the model and will also be removed. Those are:
+```{r delete Useless, echo=FALSE, warning=FALSE, cache=TRUE}
+
+kable(names(test)[1:7],col.names=c("Useless Variables"))
+train[,1:7]<-NULL
+test[,1:7]<-NULL
+```
+
+## Models
+### Cross Validation
+
+To perform some cross validation we will split the training data into **training (80%)** and **test (20%)** sub-sets in **tree** different ways so we can average the accuracy of each model over tree different splits.
+
+```{r subseting, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+trainingPercentage<-.80
+originalSize<-nrow(train)
+traningSize<-round(originalSize*trainingPercentage)
+trainSubset<-list()
+testSubset<-list()
+trainSubsetClasse<-list()
+testSubsetClasse<-list()
+for (i in 1:3){
+    train_ind<-sample.int(n=originalSize,size=traningSize)
+    
+    trainSubset[[i]]<-train[train_ind,-53]
+    trainSubsetClasse[[i]]<-train[train_ind,53]
+    
+    testSubset[[i]]<-train[-train_ind,-53]
+    testSubsetClasse[[i]]<-train[-train_ind,53]
+}
+```
+
+### Selected Models
+
+We will build four different models to compare them
+```{r Build Models, message=FALSE, warning=FALSE, cache=TRUE, include=FALSE, paged.print=FALSE}
+options(warn=-1)
+models<-data.frame(ModelName=c("SVM Linear", "Neural Network", "Support Vector Machines with Radial Basis Function Kernel","Quadratic Discriminant Analysis"),
+                   ModelCode=c("svmLinear","nnet","svmRadial","qda"))
+
+
+fit<-list()
+predict<-list()
+confusion<-list()
+for (modelType in models$ModelCode){
+    fit[[modelType]]<-list()
+    predict[[modelType]]<-list()
+    confusion[[modelType]]<-list()
+    print(modelType)
+    for (i in 1:3){
+        print(i)
+        modelFit<-train(y=trainSubsetClasse[[i]],
+                        x=trainSubset[[i]],
+                        method=modelType,
+                        k=5,
+                        preProcess=c("pca"))
+        
+        print("Model Done")
+        pred<-predict(modelFit,testSubset[[i]])
+        print("Predict Done")
+        conf<-confusionMatrix(testSubsetClasse[[i]],pred)
+        print("Confusion Done")
+        
+        fit[[modelType]][[i]]<-modelFit
+        predict[[modelType]][[i]]<-pred
+        confusion[[modelType]][[i]]<-conf
+        print(modelFit)
+        #invisible(readline(prompt="Press [enter] to continue"))
+    }
+}
+```
+
+
+```{r print models, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+kable(models)
+```
+### Model Comparisson
+```{r message=FALSE, warning=FALSE, cache=TRUE, include=FALSE, paged.print=FALSE}
+modelComparisson<-data.frame(rep(NA,4),rep(NA,4),rep(NA,4),rep(NA,4))
+names(modelComparisson)<-models$ModelCode
+row.names(modelComparisson)<-c("Set 1","Set 2","Set 3","Mean")
+for (row in (1:3)){
+    for (col in models$ModelCode){
+        accuracy<-sum(predict[[col]][[row]]==testSubsetClasse[[row]])/length(testSubsetClasse[[row]])
+        modelComparisson[row,col]<-accuracy
+    }
+}
+modelComparisson[4,]<-colMeans(modelComparisson[1:3,])
+#modelComparisson[5,]<-colVars(modelComparisson[1:3,])
+```
+
+```{r output comparisson, echo=FALSE, message=FALSE, warning=FALSE,cache=TRUE}
+kable(modelComparisson)
+```
+
+### Model Selection and Accuracy
+
+From the comparisson above we notice that **Support Vector Machines with Radial Basis Function Kernel** is the model that gets the best accuracy. The **expected accuracy is 91.5%**, the mean onf the accuray on the tree resamples. We will rebuild the hole model, using the full traning set before predicting the values on the testing set.
+```{r Buld final model, include=FALSE}
+modelFit<-train(y=train$classe, 
+                x=train[,-c(ncol(train))],
+                method="svmRadial",
+                preProcess=c("pca"))
+
+```
+        
+## Results on the Test Set
+
+```{r predict, echo=FALSE}
+pred<-predict(modelFit,newdata=test[,-53])
+results<-data.frame(ID=test$problem_id,Prediction=pred)
+kable(results)
+```
