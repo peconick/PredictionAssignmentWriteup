@@ -158,9 +158,10 @@ for (modelType in models$ModelCode){
 ```
 
 
-```{r print models, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+```{r print models, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE,cache=TRUE}
 kable(models)
 ```
+
 ### Model Comparisson
 ```{r message=FALSE, warning=FALSE, cache=TRUE, include=FALSE, paged.print=FALSE}
 modelComparisson<-data.frame(rep(NA,4),rep(NA,4),rep(NA,4),rep(NA,4))
@@ -183,7 +184,7 @@ kable(modelComparisson)
 ### Model Selection and Accuracy
 
 From the comparisson above we notice that **Support Vector Machines with Radial Basis Function Kernel** is the model that gets the best accuracy. The **expected accuracy is 91.5%**, the mean onf the accuray on the tree resamples. We will rebuild the hole model, using the full traning set before predicting the values on the testing set.
-```{r Buld final model, include=FALSE}
+```{r Buld final model, include=FALSE,cache=TRUE}
 modelFit<-train(y=train$classe, 
                 x=train[,-c(ncol(train))],
                 method="svmRadial",
@@ -193,7 +194,7 @@ modelFit<-train(y=train$classe,
         
 ## Results on the Test Set
 
-```{r predict, echo=FALSE}
+```{r predict, echo=FALSE,cache=TRUE}
 pred<-predict(modelFit,newdata=test[,-53])
 results<-data.frame(ID=test$problem_id,Prediction=pred)
 kable(results)
